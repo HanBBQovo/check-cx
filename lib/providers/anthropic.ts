@@ -13,7 +13,7 @@ import { measureEndpointPing } from "./endpoint-ping";
  * 默认超时时间 (毫秒)
  * 与其他 Provider 保持一致
  */
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
  * 性能降级阈值 (毫秒)
