@@ -6,6 +6,7 @@ import { ChevronDown, ExternalLink, RefreshCcw, Activity, Zap, Radio, Github } f
 
 import { ProviderIcon } from "@/components/provider-icon";
 import { StatusTimeline } from "@/components/status-timeline";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -455,6 +456,8 @@ export function DashboardView({ initialData }: DashboardViewProps) {
               <Github className="h-3.5 w-3.5" />
               <span>GitHub</span>
             </Link>
+            <div className="h-4 w-[1px] bg-border/60" />
+            <ThemeToggle />
           </div>
           
           <h1 className="max-w-2xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl md:text-6xl">

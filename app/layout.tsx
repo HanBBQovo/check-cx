@@ -4,7 +4,7 @@ import "./globals.css";
 import "@/lib/core/poller";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
-import ThemeClock from "@/components/theme-clock";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,10 +45,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ThemeClock />
-        {children}
-        <SpeedInsights/>
-        <Analytics/>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <SpeedInsights/>
+          <Analytics/>
+        </ThemeProvider>
       </body>
     </html>
   );
