@@ -37,24 +37,6 @@ const DEFAULT_TIMEOUT_MS = 45_000;
 const DEGRADED_THRESHOLD_MS = 6_000;
 
 /**
- * streamText 函数支持的顶级参数集合
- * 这些参数应该直接传递给 streamText，而不是放入 providerOptions
- */
-const STREAM_TEXT_TOP_LEVEL_KEYS = new Set([
-  "system", // 系统提示词
-  "maxTokens", // 最大生成 token 数
-  "temperature", // 温度参数（随机性）
-  "topP", // Top-P 采样参数
-  "topK", // Top-K 采样参数
-  "presencePenalty", // 存在惩罚
-  "frequencyPenalty", // 频率惩罚
-  "stopSequences", // 停止序列
-  "seed", // 随机种子
-  "maxRetries", // 最大重试次数
-  "headers", // 自定义请求头
-]);
-
-/**
  * 需要完全排除的字段集合
  * 这些字段会与 streamText 内部参数冲突，必须过滤掉
  */
@@ -201,6 +183,89 @@ function parseModelDirective(model: string): {
 }
 
 /**
+ * 创建自定义 fetch 函数的配置
+ */
+interface CustomFetchOptions {
+  /** 要注入到请求体的额外参数 */
+  metadata?: Record<string, unknown>;
+  /** 强制覆盖的请求头（会覆盖 SDK 自动添加的内容） */
+  overrideHeaders?: Record<string, string>;
+}
+
+/**
+ * 创建自定义 fetch 函数
+ *
+ * 通过自定义 fetch 函数拦截 SDK 的请求：
+ * 1. 将 metadata 直接合并到请求体中（仅过滤冲突字段）
+ * 2. 强制覆盖请求头，避免 SDK 自动附加的内容（如 User-Agent 后缀）
+ *
+ * @param options - 配置选项
+ * @returns 自定义的 fetch 函数
+ */
+function createCustomFetch(
+  options: CustomFetchOptions
+): typeof fetch | undefined {
+  const { metadata, overrideHeaders } = options;
+
+  // 过滤掉会与 SDK 冲突的字段，其他字段直接透传
+  const injectableParams: Record<string, unknown> = {};
+  if (metadata) {
+    for (const [key, value] of Object.entries(metadata)) {
+      // 只跳过会导致冲突的字段
+      if (EXCLUDED_KEYS.has(key)) {
+        continue;
+      }
+      injectableParams[key] = value;
+    }
+  }
+
+  const hasInjectableParams = Object.keys(injectableParams).length > 0;
+  const hasOverrideHeaders =
+    overrideHeaders && Object.keys(overrideHeaders).length > 0;
+
+  // 如果没有任何自定义需求，使用原生 fetch
+  if (!hasInjectableParams && !hasOverrideHeaders) {
+    return undefined;
+  }
+
+  // 返回自定义 fetch 函数
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    // 只处理 POST 请求（API 调用）
+    if (init?.method?.toUpperCase() === "POST" && init.body) {
+      try {
+        // 解析原始请求体
+        const originalBody =
+          typeof init.body === "string" ? JSON.parse(init.body) : init.body;
+
+        // 合并 metadata 参数到请求体
+        const mergedBody = hasInjectableParams
+          ? { ...originalBody, ...injectableParams }
+          : originalBody;
+
+        // 构建最终的请求头
+        // SDK 传入的 headers 作为基础，然后用 overrideHeaders 强制覆盖
+        const finalHeaders = hasOverrideHeaders
+          ? { ...(init.headers as Record<string, string>), ...overrideHeaders }
+          : init.headers;
+
+        // 使用修改后的请求发送
+        return fetch(input, {
+          ...init,
+          headers: finalHeaders,
+          body: JSON.stringify(mergedBody),
+        });
+      } catch {
+        // JSON 解析失败，使用原始请求
+        return fetch(input, init);
+      }
+    }
+
+    // 非 POST 请求直接透传
+    return fetch(input, init);
+  };
+}
+
+/**
  * 创建 AI SDK 模型实例
  *
  * 根据配置中的 Provider 类型创建对应的 AI SDK 模型实例。
@@ -208,6 +273,8 @@ function parseModelDirective(model: string): {
  * - openai: 使用 @ai-sdk/openai，支持 Chat Completions 和 Responses API
  * - anthropic: 使用 @ai-sdk/anthropic
  * - gemini: 使用 @ai-sdk/openai-compatible（OpenAI 兼容模式）
+ *
+ * 通过自定义 fetch 函数注入 metadata 参数到请求体中。
  *
  * @param config - Provider 配置，包含类型、API Key、端点等信息
  * @returns 包含模型实例、推理强度和 API 类型标识的对象
@@ -228,6 +295,14 @@ function createModel(config: ProviderConfig) {
     ...(config.requestHeaders || {}),
   };
 
+  // 创建自定义 fetch 函数
+  // 1. 注入 metadata 到请求体
+  // 2. 强制覆盖请求头（避免 SDK 自动附加 User-Agent 后缀）
+  const customFetch = createCustomFetch({
+    metadata: config.metadata ?? undefined,
+    overrideHeaders: headers,
+  });
+
   switch (config.type) {
     case "openai": {
       // 创建 OpenAI SDK 实例
@@ -235,6 +310,7 @@ function createModel(config: ProviderConfig) {
         apiKey: config.apiKey,
         baseURL,
         headers,
+        fetch: customFetch,
       });
 
       // 根据端点类型选择不同的 API 调用方式
@@ -261,6 +337,7 @@ function createModel(config: ProviderConfig) {
         apiKey: config.apiKey,
         baseURL,
         headers,
+        fetch: customFetch,
       });
       // Anthropic 不支持 reasoning_effort 参数
       return {
@@ -278,6 +355,7 @@ function createModel(config: ProviderConfig) {
         apiKey: config.apiKey,
         baseURL,
         headers,
+        fetch: customFetch,
       });
       // Gemini 不支持 reasoning_effort 参数
       return {
@@ -392,102 +470,27 @@ function logCheckResult(
 }
 
 /**
- * 从 system 数组格式提取文本
+ * 构建 OpenAI 推理模型的 providerOptions
  *
- * OpenAI 格式的 system 可能是数组：[{ type: "text", text: "..." }]
- * 此函数将其转换为字符串
- */
-function extractSystemText(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
-
-  const texts = value
-    .filter(
-      (item): item is { text: string; type: string } =>
-        typeof item === "object" &&
-        item !== null &&
-        "text" in item &&
-        typeof item.text === "string"
-    )
-    .map((item) => item.text);
-
-  return texts.length > 0 ? texts.join("\n") : null;
-}
-
-/**
- * 分离 metadata 参数
- *
- * 将 metadata 中的参数分为两类：
- * - topLevelParams: 直接传递给 streamText 的参数
- * - providerSpecificParams: 放入 providerOptions 的 Provider 特定参数
- *
- * @param metadata - 原始 metadata 对象
- * @returns 分离后的参数对象
- */
-function separateMetadataParams(metadata: Record<string, unknown> | undefined): {
-  topLevelParams: Record<string, JSONValue>;
-  providerSpecificParams: Record<string, JSONValue>;
-} {
-  const topLevelParams: Record<string, JSONValue> = {};
-  const providerSpecificParams: Record<string, JSONValue> = {};
-
-  if (!metadata) {
-    return { topLevelParams, providerSpecificParams };
-  }
-
-  for (const [key, value] of Object.entries(metadata)) {
-    // 跳过会导致冲突的字段
-    if (EXCLUDED_KEYS.has(key)) continue;
-
-    if (STREAM_TEXT_TOP_LEVEL_KEYS.has(key)) {
-      // 特殊处理 system 字段：如果是数组格式，转换为字符串
-      if (key === "system") {
-        const systemText = extractSystemText(value);
-        if (systemText) {
-          topLevelParams[key] = systemText;
-        }
-      } else {
-        topLevelParams[key] = value as JSONValue;
-      }
-    } else {
-      providerSpecificParams[key] = value as JSONValue;
-    }
-  }
-
-  return { topLevelParams, providerSpecificParams };
-}
-
-/**
- * 构建 providerOptions 对象
+ * 仅用于传递 reasoning_effort 参数，其他 provider 特定参数
+ * 已通过 fetch 函数注入到请求体中。
  *
  * @param providerType - Provider 类型
- * @param providerSpecificParams - Provider 特定参数
  * @param reasoningEffort - 推理强度（仅 OpenAI）
- * @returns providerOptions 对象，如果为空则返回 undefined
+ * @returns providerOptions 对象，如果不需要则返回 undefined
  */
-function buildProviderOptions(
+function buildReasoningOptions(
   providerType: string,
-  providerSpecificParams: Record<string, JSONValue>,
   reasoningEffort?: ReasoningEffort
 ): Record<string, Record<string, JSONValue>> | undefined {
-  const providerOptionsMap: Record<string, Record<string, JSONValue>> = {};
-  const providerKey = providerType === "gemini" ? "gemini" : providerType;
-
-  // 添加 Provider 特定参数
-  if (Object.keys(providerSpecificParams).length > 0) {
-    providerOptionsMap[providerKey] = { ...providerSpecificParams };
+  // 只有 OpenAI 推理模型需要 providerOptions
+  if (!reasoningEffort || providerType !== "openai") {
+    return undefined;
   }
 
-  // 为 OpenAI 推理模型添加 reasoning_effort 参数
-  if (reasoningEffort && providerType === "openai") {
-    providerOptionsMap.openai = {
-      ...(providerOptionsMap.openai || {}),
-      reasoningEffort,
-    };
-  }
-
-  return Object.keys(providerOptionsMap).length > 0
-    ? providerOptionsMap
-    : undefined;
+  return {
+    openai: { reasoningEffort },
+  };
 }
 
 /**
@@ -530,28 +533,17 @@ export async function checkWithAiSdk(
   });
 
   try {
-    // 创建 AI SDK 模型实例
+    // 创建 AI SDK 模型实例（metadata 通过 fetch 函数直接合并到请求体）
     const { model, reasoningEffort } = createModel(config);
 
-    // 分离 metadata 参数
-    const { topLevelParams, providerSpecificParams } = separateMetadataParams(
-      config.metadata
-    );
-
-    // 构建 providerOptions
-    const providerOptions = buildProviderOptions(
-      config.type,
-      providerSpecificParams,
-      reasoningEffort
-    );
+    // 构建 OpenAI 推理模型的 providerOptions
+    const providerOptions = buildReasoningOptions(config.type, reasoningEffort);
 
     // 构建请求参数
     const streamParams: Parameters<typeof streamText>[0] = {
       model,
       prompt: challenge.prompt,
-      temperature: 0, // 使用确定性输出，便于验证
       abortSignal: controller.signal,
-      ...topLevelParams,
       ...(providerOptions ? { providerOptions } : {}),
     };
 
