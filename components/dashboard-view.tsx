@@ -301,7 +301,7 @@ function GroupPanel({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const statusSummary = useMemo(() => {
-    const counts = { operational: 0, degraded: 0, failed: 0, maintenance: 0 };
+    const counts = { operational: 0, degraded: 0, failed: 0, validation_failed: 0, maintenance: 0 };
     for (const timeline of group.timelines) {
       const status = timeline.latest.status;
       if (status in counts) {
@@ -367,6 +367,12 @@ function GroupPanel({
                  <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                     {statusSummary.failed} 异常
+                 </span>
+               )}
+               {statusSummary.validation_failed > 0 && (
+                 <span className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                    {statusSummary.validation_failed} 验证失败
                  </span>
                )}
             </div>

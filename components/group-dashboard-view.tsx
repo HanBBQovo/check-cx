@@ -331,7 +331,7 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
 
   // 计算状态统计
   const statusSummary = useMemo(() => {
-    const counts = { operational: 0, degraded: 0, failed: 0, maintenance: 0 };
+    const counts = { operational: 0, degraded: 0, failed: 0, validation_failed: 0, maintenance: 0 };
     for (const timeline of providerTimelines) {
       const status = timeline.latest.status;
       if (status in counts) {
@@ -392,6 +392,12 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
                <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                 {statusSummary.failed} 异常
+              </span>
+            )}
+            {statusSummary.validation_failed > 0 && (
+               <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-700 dark:text-orange-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                {statusSummary.validation_failed} 验证失败
               </span>
             )}
              {statusSummary.maintenance > 0 && (
