@@ -41,7 +41,7 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 // 最大显示数据点数量，超过此值将进行采样
-const MAX_VISIBLE_DOTS = 60;
+const MAX_VISIBLE_DOTS = 30;
 
 interface SampledDataPoint extends TrendDataPoint {
   index: number;
