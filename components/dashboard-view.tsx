@@ -527,7 +527,6 @@ export function DashboardView({ initialData }: DashboardViewProps) {
            {/* Search Box - only show when multiple groups exist */}
            {hasMultipleGroups && (
              <div className="relative w-full sm:w-64">
-               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                <input
                  type="text"
                  placeholder="搜索分组..."
@@ -535,11 +534,15 @@ export function DashboardView({ initialData }: DashboardViewProps) {
                  onChange={(e) => setSearchQuery(e.target.value)}
                  className="h-10 w-full rounded-full border border-border/60 bg-background/50 pl-10 pr-10 text-sm backdrop-blur-sm transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
                />
+               <Search
+                 aria-hidden="true"
+                 className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+               />
                {searchQuery && (
                  <button
                    type="button"
                    onClick={() => setSearchQuery("")}
-                   className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                   className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                  >
                    <X className="h-4 w-4" />
                  </button>
