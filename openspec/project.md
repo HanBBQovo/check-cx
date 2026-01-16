@@ -106,8 +106,8 @@ lib/
 数据库服务，存储配置和历史记录：
 
 **环境变量**:
-- `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY`: 公开/匿名 key
+- `SUPABASE_URL`: Supabase 项目 URL
+- `SUPABASE_PUBLISHABLE_OR_ANON_KEY`: 公开/匿名 key
 
 **表结构**:
 - `check_configs`: 存储 Provider 配置

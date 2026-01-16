@@ -37,8 +37,8 @@ cp .env.example .env.local
 填写 `.env.local`：
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY=...
+SUPABASE_URL=...
+SUPABASE_PUBLISHABLE_OR_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 CHECK_NODE_ID=local
 CHECK_POLL_INTERVAL_SECONDS=60
@@ -91,8 +91,8 @@ pnpm lint   # 代码检查
 
 | 变量 | 必需 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | 是 | - | Supabase 项目 URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY` | 是 | - | Supabase 公共访问 Key |
+| `SUPABASE_URL` | 是 | - | Supabase 项目 URL |
+| `SUPABASE_PUBLISHABLE_OR_ANON_KEY` | 是 | - | Supabase 公共访问 Key |
 | `SUPABASE_SERVICE_ROLE_KEY` | 是 | - | Service Role Key（服务端使用，勿暴露） |
 | `CHECK_NODE_ID` | 否 | `local` | 节点身份，用于多节点选主 |
 | `CHECK_POLL_INTERVAL_SECONDS` | 否 | `60` | 检测间隔（15–600 秒） |

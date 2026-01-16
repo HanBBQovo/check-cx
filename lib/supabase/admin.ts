@@ -20,12 +20,12 @@ const DB_SCHEMA = process.env.NODE_ENV === "development" ? "dev" : "public";
  * 仅应在服务端后台任务中使用
  */
 export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error(
-      "缺少 NEXT_PUBLIC_SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY 环境变量"
+      "缺少 SUPABASE_URL 或 SUPABASE_SERVICE_ROLE_KEY 环境变量"
     );
   }
 

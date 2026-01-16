@@ -139,12 +139,12 @@ lib/
 
 ### Supabase 集成
 
-- **客户端**: `lib/supabase/client.ts` 提供浏览器端客户端
 - **服务端**: `lib/supabase/server.ts` 提供服务器端客户端(支持 SSR 和 cookies)
+- **管理端**: `lib/supabase/admin.ts` 提供管理员客户端(绕过 RLS)
 - **中间件**: `lib/supabase/middleware.ts` 处理会话刷新
 - **环境变量**:
-  - `NEXT_PUBLIC_SUPABASE_URL`: Supabase 项目 URL
-  - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY`: 公开/匿名 key
+  - `SUPABASE_URL`: Supabase 项目 URL
+  - `SUPABASE_PUBLISHABLE_OR_ANON_KEY`: 公开/匿名 key
 
 ### 数据库表结构
 

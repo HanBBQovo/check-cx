@@ -5,7 +5,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { X, AlertCircle, Info, AlertTriangle } from "lucide-react";
 import { SystemNotificationRow } from "@/lib/types/database";
-import { getActiveSystemNotifications } from "@/lib/database/notifications";
 import { cn } from "@/lib/utils/cn";
 
 export function NotificationBanner() {
@@ -15,8 +14,15 @@ export function NotificationBanner() {
 
   useEffect(() => {
     async function fetchNotifications() {
-      const data = await getActiveSystemNotifications();
-      setNotifications(data);
+      try {
+        const response = await fetch("/api/notifications");
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch notifications:", error);
+      }
     }
     fetchNotifications();
   }, []);

@@ -1,12 +1,12 @@
-import { createClient } from "@/lib/supabase/client";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { SystemNotificationRow } from "@/lib/types/database";
 
 /**
- * 客户端获取所有活跃的系统通知
+ * 服务端获取所有活跃的系统通知
  */
 export async function getActiveSystemNotifications(): Promise<SystemNotificationRow[]> {
-  const supabase = createClient();
-  
+  const supabase = createAdminClient();
+
   const { data, error } = await supabase
     .from("system_notifications")
     .select("*")

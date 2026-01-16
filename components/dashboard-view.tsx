@@ -277,6 +277,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     )
   );
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  const [isDndReady, setIsDndReady] = useState(false);
   const [activeOfficialCardId, setActiveOfficialCardId] = useState<string | null>(null);
   
   const { providerTimelines, groupedTimelines, total, lastUpdated, pollIntervalLabel } = data;
@@ -305,6 +306,10 @@ export function DashboardView({ initialData }: DashboardViewProps) {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  useEffect(() => {
+    setIsDndReady(true);
+  }, []);
 
   useEffect(() => {
     // Client-side only: load from localStorage
@@ -485,6 +490,51 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     });
   }, [orderedGroupNames, groupedTimelines, searchQuery]);
 
+  const groupedPanels = filteredGroupNames.length === 0 ? (
+    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/50 bg-muted/20 py-20 text-center">
+      <div className="mb-4 rounded-full bg-muted/50 p-4">
+        <Search className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h3 className="text-lg font-semibold">没有找到匹配的分组</h3>
+      <p className="text-muted-foreground">尝试使用其他关键词搜索</p>
+      <button
+        type="button"
+        onClick={() => setSearchQuery("")}
+        className="mt-4 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
+      >
+        清除搜索
+      </button>
+    </div>
+  ) : (
+    <div className="space-y-4">
+      {filteredGroupNames.map((groupName) => {
+        const group = groupedTimelines.find((g) => g.groupName === groupName);
+        if (!group) return null;
+        const commonProps = {
+          group,
+          timeToNextRefresh,
+          isCoarsePointer,
+          activeOfficialCardId,
+          setActiveOfficialCardId,
+          gridColsClass,
+          availabilityStats,
+          trendData,
+          selectedPeriod,
+          defaultOpen: false,
+        };
+        return isDndReady ? (
+          <SortableGroupPanel
+            key={group.groupName}
+            id={group.groupName}
+            {...commonProps}
+          />
+        ) : (
+          <GroupPanel key={group.groupName} {...commonProps} />
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="relative">
        {/* Corner decorative markers for the main container */}
@@ -609,58 +659,22 @@ export function DashboardView({ initialData }: DashboardViewProps) {
             <p className="text-muted-foreground">请配置检查端点以开始监控</p>
           </div>
         ) : hasMultipleGroups ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={filteredGroupNames}
-              strategy={verticalListSortingStrategy}
+          isDndReady ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              {filteredGroupNames.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/50 bg-muted/20 py-20 text-center">
-                  <div className="mb-4 rounded-full bg-muted/50 p-4">
-                    <Search className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold">没有找到匹配的分组</h3>
-                  <p className="text-muted-foreground">尝试使用其他关键词搜索</p>
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="mt-4 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/90"
-                  >
-                    清除搜索
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredGroupNames.map((groupName) => {
-                    const group = groupedTimelines.find(
-                      (g) => g.groupName === groupName
-                    );
-                    if (!group) return null;
-                    return (
-                      <SortableGroupPanel
-                        key={group.groupName}
-                        id={group.groupName}
-                        group={group}
-                        timeToNextRefresh={timeToNextRefresh}
-                        isCoarsePointer={isCoarsePointer}
-                        activeOfficialCardId={activeOfficialCardId}
-                        setActiveOfficialCardId={setActiveOfficialCardId}
-                        gridColsClass={gridColsClass}
-                        availabilityStats={availabilityStats}
-                        trendData={trendData}
-                        selectedPeriod={selectedPeriod}
-                        defaultOpen={false}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </SortableContext>
-          </DndContext>
+              <SortableContext
+                items={filteredGroupNames}
+                strategy={verticalListSortingStrategy}
+              >
+                {groupedPanels}
+              </SortableContext>
+            </DndContext>
+          ) : (
+            groupedPanels
+          )
         ) : (
           <div className={`grid gap-6 ${gridColsClass}`}>
             {providerTimelines.map((timeline) => (
