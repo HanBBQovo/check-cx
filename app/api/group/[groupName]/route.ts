@@ -32,6 +32,9 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const { searchParams } = new URL(_request.url);
   const period = searchParams.get("trendPeriod");
+  const forceRefreshParam = searchParams.get("forceRefresh");
+  const shouldForceRefresh =
+    forceRefreshParam === "1" || forceRefreshParam === "true";
   const trendPeriod = (["7d", "15d", "30d"] as AvailabilityPeriod[]).includes(
     period as AvailabilityPeriod
   )
@@ -39,7 +42,7 @@ export async function GET(_request: Request, context: RouteContext) {
     : undefined;
 
   const data = await loadGroupDashboardData(decodedGroupName, {
-    refreshMode: "always",
+    refreshMode: shouldForceRefresh ? "always" : "never",
     trendPeriod,
   });
 
@@ -51,7 +54,8 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   // 生成 ETag（基于数据内容）
-  const { generatedAt: _generatedAt, ...etagPayload } = data;
+  const { generatedAt, ...etagPayload } = data;
+  void generatedAt;
   const jsonBody = JSON.stringify(etagPayload);
   const etag = generateETag(jsonBody);
 

@@ -28,17 +28,21 @@ function generateETag(data: string): string {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("trendPeriod");
+  const forceRefreshParam = searchParams.get("forceRefresh");
+  const shouldForceRefresh =
+    forceRefreshParam === "1" || forceRefreshParam === "true";
   const trendPeriod = VALID_PERIODS.includes(period as AvailabilityPeriod)
     ? (period as AvailabilityPeriod)
     : undefined;
 
   const data = await loadDashboardData({
-    refreshMode: "always",
+    refreshMode: shouldForceRefresh ? "always" : "never",
     trendPeriod,
   });
 
   // 生成 ETag（基于数据内容）
-  const { generatedAt: _generatedAt, ...etagPayload } = data;
+  const { generatedAt, ...etagPayload } = data;
+  void generatedAt;
   const jsonBody = JSON.stringify(etagPayload);
   const etag = generateETag(jsonBody);
 

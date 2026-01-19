@@ -317,6 +317,17 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
                 </div>
                 <span className="opacity-30">|</span>
                 <span>{pollIntervalLabel} 轮询</span>
+                <button
+                  type="button"
+                  onClick={() => refresh(selectedPeriod, true)}
+                  disabled={isRefreshing}
+                  className={cn(
+                    "rounded-full border border-border/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:border-border/80 hover:text-foreground",
+                    isRefreshing && "cursor-not-allowed opacity-60"
+                  )}
+                >
+                  刷新
+                </button>
              </div>
            )}
         </div>

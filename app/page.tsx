@@ -1,20 +1,14 @@
-import {DashboardView} from "@/components/dashboard-view";
+import {DashboardBootstrap} from "@/components/dashboard-bootstrap";
 import {ClientYear} from "@/components/client-time";
-import {loadDashboardData} from "@/lib/core/dashboard-data";
 import packageJson from "@/package.json";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const ESTIMATED_VERSION = `v${packageJson.version}`;
 
-export default async function Home() {
-  const data = await loadDashboardData({ refreshMode: "missing" });
-
+export default function Home() {
   return (
     <div className="py-8 md:py-16">
       <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-3 sm:gap-8 sm:px-6 lg:px-12">
-        <DashboardView initialData={data} />
+        <DashboardBootstrap />
       </main>
       
       <footer className="mt-16 border-t border-border/40">

@@ -2,8 +2,8 @@ import {notFound} from "next/navigation";
 import Link from "next/link";
 import {ChevronLeft} from "lucide-react";
 
-import {GroupDashboardView} from "@/components/group-dashboard-view";
-import {loadGroupDashboardData} from "@/lib/core/group-data";
+import {GroupDashboardBootstrap} from "@/components/group-dashboard-bootstrap";
+import {getAvailableGroups} from "@/lib/core/group-data";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,10 +27,8 @@ export default async function GroupPage({ params }: GroupPageProps) {
   const { groupName } = await params;
   const decodedGroupName = decodeURIComponent(groupName);
 
-  const data = await loadGroupDashboardData(decodedGroupName, { refreshMode: "missing" });
-
-  // 分组不存在或没有配置时返回 404
-  if (!data) {
+  const availableGroups = await getAvailableGroups();
+  if (!availableGroups.includes(decodedGroupName)) {
     notFound();
   }
 
@@ -46,10 +44,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
           返回首页
         </Link>
 
-        <GroupDashboardView
-          groupName={decodedGroupName}
-          initialData={data}
-        />
+        <GroupDashboardBootstrap groupName={decodedGroupName} />
       </main>
     </div>
   );

@@ -90,6 +90,7 @@ async function fetchFromNetwork(
 ): Promise<{ data: DashboardData | null; etag?: string }> {
   const params = new URLSearchParams({ trendPeriod });
   if (forceFresh) {
+    params.set("forceRefresh", "1");
     params.set("_t", String(Date.now()));
   }
 
