@@ -502,7 +502,10 @@ export function DashboardView({ initialData }: DashboardViewProps) {
 
   // Filter and sort groups based on search query and sort mode
   const filteredGroupNames = useMemo(() => {
-    let result = orderedGroupNames;
+    let result =
+      sortMode === "custom"
+        ? orderedGroupNames
+        : groupedTimelines.map((g) => g.groupName);
 
     // Filter by search query
     if (searchQuery.trim()) {
