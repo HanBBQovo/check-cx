@@ -9,8 +9,8 @@
 
 import type { DashboardData, AvailabilityPeriod } from "../types";
 
-/** 缓存有效期默认值：2 分钟 */
-const DEFAULT_CACHE_TTL_MS = 2 * 60 * 1000;
+/** 缓存有效期默认值：5 分钟 */
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /** 缓存条目 */
 interface CacheEntry {
@@ -25,6 +25,50 @@ function getCacheKey(trendPeriod: AvailabilityPeriod): string {
   return `dashboard:${trendPeriod}`;
 }
 
+interface FrontendCacheMetrics {
+  hits: number;
+  misses: number;
+  staleHits: number;
+  forcedRefreshes: number;
+}
+
+const metrics: FrontendCacheMetrics = {
+  hits: 0,
+  misses: 0,
+  staleHits: 0,
+  forcedRefreshes: 0,
+};
+
+const globalMetrics = globalThis as Record<string, unknown>;
+if (typeof window !== "undefined") {
+  globalMetrics.__CHECK_CX_FRONTEND_CACHE_METRICS__ = metrics;
+}
+
+function recordHit(isStale: boolean): void {
+  metrics.hits += 1;
+  if (isStale) {
+    metrics.staleHits += 1;
+  }
+}
+
+function recordMiss(isForced: boolean): void {
+  metrics.misses += 1;
+  if (isForced) {
+    metrics.forcedRefreshes += 1;
+  }
+}
+
+export function getFrontendCacheMetrics(): FrontendCacheMetrics {
+  return { ...metrics };
+}
+
+export function resetFrontendCacheMetrics(): void {
+  metrics.hits = 0;
+  metrics.misses = 0;
+  metrics.staleHits = 0;
+  metrics.forcedRefreshes = 0;
+}
+
 /** 缓存存储 */
 const cache = new Map<string, CacheEntry>();
 
@@ -34,6 +78,10 @@ const pendingRequests = new Map<string, Promise<DashboardData | null>>();
 /** 检查缓存是否过期 */
 function isExpired(entry: CacheEntry): boolean {
   return Date.now() - entry.timestamp >= entry.ttlMs;
+}
+
+function isFresh(entry: CacheEntry): boolean {
+  return !isExpired(entry);
 }
 
 /** 获取缓存 */
@@ -74,6 +122,45 @@ export function touchCache(trendPeriod: AvailabilityPeriod): void {
 /** 清除所有缓存 */
 export function clearCache(): void {
   cache.clear();
+}
+
+export async function prefetchDashboardData(
+  periods: AvailabilityPeriod[],
+  currentPeriod?: AvailabilityPeriod
+): Promise<void> {
+  const targets = periods.filter((period) => period !== currentPeriod);
+  await Promise.all(
+    targets.map(async (trendPeriod) => {
+      const key = getCacheKey(trendPeriod);
+      const cached = cache.get(key);
+      if (cached && isFresh(cached)) {
+        return;
+      }
+      if (pendingRequests.has(key)) {
+        return;
+      }
+
+      const request = fetchFromNetwork(trendPeriod, cached?.etag, false)
+        .then(({ data, etag }) => {
+          if (data) {
+            setCache(trendPeriod, data, etag);
+          } else if (cached) {
+            touchCache(trendPeriod);
+          }
+          return data;
+        })
+        .catch((error) => {
+          console.error("[check-cx] 预取 dashboard 失败", error);
+          return null;
+        })
+        .finally(() => {
+          pendingRequests.delete(key);
+        });
+
+      pendingRequests.set(key, request);
+      await request;
+    })
+  );
 }
 
 /**
@@ -133,7 +220,7 @@ function revalidateInBackground(
     return;
   }
 
-  const request = fetchFromNetwork(trendPeriod, etag)
+  const request = fetchFromNetwork(trendPeriod, etag, false)
     .then(({ data, etag: newEtag }) => {
       if (data) {
         setCache(trendPeriod, data, newEtag);
@@ -181,16 +268,19 @@ export async function fetchWithCache(
 ): Promise<FetchWithCacheResult> {
   const { trendPeriod, forceFresh, onBackgroundUpdate, revalidateIfFresh } = options;
   const cached = getCache(trendPeriod);
+  const key = getCacheKey(trendPeriod);
 
   // 强制刷新：忽略缓存
   if (forceFresh) {
     const { data, etag } = await fetchFromNetwork(trendPeriod, undefined, true);
     if (data) {
+      recordMiss(true);
       setCache(trendPeriod, data, etag);
       return { data, fromCache: false, isRevalidating: false };
     }
     // 理论上强制刷新不应该返回 304，但做兜底
     if (cached) {
+      recordHit(true);
       return { data: cached.data, fromCache: true, isRevalidating: false };
     }
     throw new Error("无数据可用");
@@ -200,20 +290,39 @@ export async function fetchWithCache(
   if (cached && !isExpired(cached)) {
     if (revalidateIfFresh) {
       revalidateInBackground(trendPeriod, cached.etag, onBackgroundUpdate);
+      recordHit(false);
       return { data: cached.data, fromCache: true, isRevalidating: true };
     }
+    recordHit(false);
     return { data: cached.data, fromCache: true, isRevalidating: false };
   }
 
   // 缓存过期但存在：返回旧数据，后台刷新
   if (cached) {
     revalidateInBackground(trendPeriod, cached.etag, onBackgroundUpdate);
+    recordHit(true);
     return { data: cached.data, fromCache: true, isRevalidating: true };
   }
 
+  // 没有缓存但已有预取请求：复用请求并等待结果
+  const inflight = pendingRequests.get(key);
+  if (inflight) {
+    const data = await inflight;
+    const latestCache = getCache(trendPeriod);
+    if (data) {
+      recordHit(false);
+      return { data, fromCache: true, isRevalidating: false };
+    }
+    if (latestCache) {
+      recordHit(true);
+      return { data: latestCache.data, fromCache: true, isRevalidating: false };
+    }
+  }
+
   // 无缓存：等待请求
-  const { data, etag } = await fetchFromNetwork(trendPeriod);
+  const { data, etag } = await fetchFromNetwork(trendPeriod, undefined, false);
   if (data) {
+    recordMiss(false);
     setCache(trendPeriod, data, etag);
     return { data, fromCache: false, isRevalidating: false };
   }

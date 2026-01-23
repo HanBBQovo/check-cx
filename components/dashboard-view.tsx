@@ -1,7 +1,8 @@
 "use client";
 
 import {useCallback, useEffect, useMemo, useState} from "react";
-import {fetchWithCache, setCache} from "@/lib/core/frontend-cache";
+import {fetchWithCache, prefetchDashboardData, setCache} from "@/lib/core/frontend-cache";
+import {prefetchGroupData} from "@/lib/core/group-frontend-cache";
 import Link from "next/link";
 import {
   Activity,
@@ -36,7 +37,14 @@ import {ProviderCard} from "@/components/provider-card";
 import {ThemeToggle} from "@/components/theme-toggle";
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {ClientTime} from "@/components/client-time";
-import type {AvailabilityPeriod, DashboardData, GroupedProviderTimelines} from "@/lib/types";
+import type {
+  AvailabilityPeriod,
+  AvailabilityStatsMap,
+  DashboardData,
+  GroupedProviderTimelines,
+  GroupInfoSummary,
+} from "@/lib/types";
+import { UNGROUPED_DISPLAY_NAME } from "@/lib/types";
 import {cn} from "@/lib/utils";
 import {parseTagList, getTagColorClass} from "@/lib/utils/tag-colors";
 
@@ -84,6 +92,58 @@ const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
 // 未分组标识常量
 const UNGROUPED_KEY = "__ungrouped__";
 
+const buildGroupedTimelines = (
+  timelines: DashboardData["providerTimelines"],
+  groupInfos: GroupInfoSummary[]
+): GroupedProviderTimelines[] => {
+  const groupMap = new Map<string, typeof timelines>();
+  const groupInfoMap = new Map<string, GroupInfoSummary>();
+
+  for (const info of groupInfos) {
+    groupInfoMap.set(info.groupName, info);
+  }
+
+  for (const timeline of timelines) {
+    const groupKey = timeline.latest.groupName || UNGROUPED_KEY;
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, []);
+    }
+    groupMap.get(groupKey)!.push(timeline);
+  }
+
+  const groups: GroupedProviderTimelines[] = [];
+  const namedGroups = [...groupMap.entries()]
+    .filter(([key]) => key !== UNGROUPED_KEY)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  for (const [groupName, groupTimelines] of namedGroups) {
+    const info = groupInfoMap.get(groupName);
+    groups.push({
+      groupName,
+      displayName: groupName,
+      websiteUrl: info?.websiteUrl,
+      tags: info?.tags ?? "",
+      timelines: [...groupTimelines].sort((a, b) =>
+        a.latest.name.localeCompare(b.latest.name)
+      ),
+    });
+  }
+
+  const ungrouped = groupMap.get(UNGROUPED_KEY);
+  if (ungrouped && ungrouped.length > 0) {
+    groups.push({
+      groupName: UNGROUPED_KEY,
+      displayName: UNGROUPED_DISPLAY_NAME,
+      tags: "",
+      timelines: [...ungrouped].sort((a, b) =>
+        a.latest.name.localeCompare(b.latest.name)
+      ),
+    });
+  }
+
+  return groups;
+};
+
 /** Tech-style decorative corner plus marker */
 const CornerPlus = ({ className }: { className?: string }) => (
   <svg 
@@ -106,8 +166,7 @@ interface GroupPanelProps {
   activeOfficialCardId: string | null;
   setActiveOfficialCardId: (id: string | null) => void;
   gridColsClass: string;
-  availabilityStats: DashboardData["availabilityStats"];
-  trendData: DashboardData["trendData"];
+  availabilityStats: AvailabilityStatsMap;
   selectedPeriod: AvailabilityPeriod;
   defaultOpen?: boolean;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
@@ -146,7 +205,6 @@ function GroupPanel({
   setActiveOfficialCardId,
   gridColsClass,
   availabilityStats,
-  trendData,
   selectedPeriod,
   defaultOpen = false,
   dragHandleProps,
@@ -259,7 +317,6 @@ function GroupPanel({
               activeOfficialCardId={activeOfficialCardId}
               setActiveOfficialCardId={setActiveOfficialCardId}
               availabilityStats={availabilityStats[timeline.id]}
-              trendData={trendData[timeline.id]}
               selectedPeriod={selectedPeriod}
             />
           ))}
@@ -290,16 +347,33 @@ export function DashboardView({ initialData }: DashboardViewProps) {
   const [isDndReady, setIsDndReady] = useState(false);
   const [activeOfficialCardId, setActiveOfficialCardId] = useState<string | null>(null);
   
-  const { providerTimelines, groupedTimelines, total, lastUpdated, pollIntervalLabel } = data;
-  const { availabilityStats, trendData } = data;
+  const { providerTimelines, total, lastUpdated, pollIntervalLabel } = data;
+  const availabilityStats: AvailabilityStatsMap = data.availabilityStats ?? {};
   const [selectedPeriod, setSelectedPeriod] = useState<AvailabilityPeriod>(
     data.trendPeriod ?? "7d"
   );
   const [sortMode, setSortMode] = useState<SortMode>("custom");
 
+  const initialGroupedTimelines = useMemo(
+    () => buildGroupedTimelines(initialData.providerTimelines, initialData.groupInfos),
+    [initialData.groupInfos, initialData.providerTimelines]
+  );
+  const groupedTimelines = useMemo(
+    () => buildGroupedTimelines(data.providerTimelines, data.groupInfos),
+    [data.groupInfos, data.providerTimelines]
+  );
+  const groupedNames = useMemo(
+    () => groupedTimelines.map((group) => group.groupName),
+    [groupedTimelines]
+  );
+  const groupedTimelineMap = useMemo(
+    () => new Map(groupedTimelines.map((group) => [group.groupName, group])),
+    [groupedTimelines]
+  );
+
   // Initialize order with default data
   const [orderedGroupNames, setOrderedGroupNames] = useState<string[]>(() => 
-    initialData.groupedTimelines.map(g => g.groupName)
+    initialGroupedTimelines.map((g) => g.groupName)
   );
 
   const latestCheckTimestamp = useMemo(
@@ -338,11 +412,11 @@ export function DashboardView({ initialData }: DashboardViewProps) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
             setOrderedGroupNames(() => {
-              const currentSet = new Set(initialData.groupedTimelines.map(g => g.groupName));
+              const currentSet = new Set(initialGroupedTimelines.map((group) => group.groupName));
               // Filter out saved names that no longer exist, and add new ones
               const validSaved = parsed.filter(name => currentSet.has(name));
-              const newNames = initialData.groupedTimelines
-                .map(g => g.groupName)
+              const newNames = initialGroupedTimelines
+                .map((group) => group.groupName)
                 .filter(name => !validSaved.includes(name));
               return [...validSaved, ...newNames];
             });
@@ -365,7 +439,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
         }
       }
     }
-  }, [initialData.groupedTimelines]);
+  }, [initialGroupedTimelines]);
 
   // Save sort mode to localStorage when it changes
   useEffect(() => {
@@ -384,7 +458,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
   // Sync when data updates (e.g. polling adds/removes groups)
   useEffect(() => {
     setOrderedGroupNames(prev => {
-      const currentNames = groupedTimelines.map(g => g.groupName);
+      const currentNames = groupedNames;
       const currentSet = new Set(currentNames);
 
       // Keep existing order for groups that still exist
@@ -400,7 +474,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
 
       return [...existingOrdered, ...newGroups];
     });
-  }, [groupedTimelines]);
+  }, [groupedNames]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const {active, over} = event;
@@ -454,6 +528,22 @@ export function DashboardView({ initialData }: DashboardViewProps) {
       setCache(initialData.trendPeriod, initialData);
     }
   }, [initialData]);
+
+  useEffect(() => {
+    const currentPeriod = data.trendPeriod ?? "7d";
+    prefetchDashboardData(["7d", "15d", "30d"], currentPeriod).catch(() => undefined);
+  }, [data.trendPeriod]);
+
+  useEffect(() => {
+    const firstGroup = groupedTimelines.find((group) => group.groupName !== UNGROUPED_KEY);
+    if (!firstGroup) {
+      return;
+    }
+    const currentPeriod = data.trendPeriod ?? "7d";
+    prefetchGroupData(firstGroup.groupName, ["7d", "15d", "30d"], currentPeriod).catch(
+      () => undefined
+    );
+  }, [data.trendPeriod, groupedTimelines]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -522,12 +612,6 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     );
   }, [groupedTimelines]);
 
-  // Map for O(1) group lookup
-  const groupedTimelineMap = useMemo(
-    () => new Map(groupedTimelines.map((g) => [g.groupName, g])),
-    [groupedTimelines]
-  );
-
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     for (const group of groupedTimelines) {
@@ -560,7 +644,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     let result =
       sortMode === "custom"
         ? orderedGroupNames
-        : groupedTimelines.map((g) => g.groupName);
+        : groupedNames;
 
     // Filter by search query
     if (searchQuery.trim()) {
@@ -618,7 +702,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     });
 
     return result;
-  }, [groupedTimelineMap, orderedGroupNames, groupedTimelines, searchQuery, selectedTags, sortMode]);
+  }, [groupedNames, groupedTimelineMap, orderedGroupNames, searchQuery, selectedTags, sortMode]);
 
   const groupedPanels = filteredGroupNames.length === 0 ? (
     <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/50 bg-muted/20 py-20 text-center">
@@ -653,7 +737,6 @@ export function DashboardView({ initialData }: DashboardViewProps) {
           setActiveOfficialCardId,
           gridColsClass,
           availabilityStats,
-          trendData,
           selectedPeriod,
           defaultOpen: false,
         };
@@ -891,7 +974,6 @@ export function DashboardView({ initialData }: DashboardViewProps) {
                 activeOfficialCardId={activeOfficialCardId}
                 setActiveOfficialCardId={setActiveOfficialCardId}
                 availabilityStats={availabilityStats[timeline.id]}
-                trendData={trendData[timeline.id]}
                 selectedPeriod={selectedPeriod}
               />
             ))}
