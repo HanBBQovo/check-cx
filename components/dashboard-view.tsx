@@ -522,6 +522,12 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     );
   }, [groupedTimelines]);
 
+  // Map for O(1) group lookup
+  const groupedTimelineMap = useMemo(
+    () => new Map(groupedTimelines.map((g) => [g.groupName, g])),
+    [groupedTimelines]
+  );
+
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     for (const group of groupedTimelines) {
@@ -560,7 +566,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       result = result.filter((groupName) => {
-        const group = groupedTimelines.find((g) => g.groupName === groupName);
+        const group = groupedTimelineMap.get(groupName);
         if (!group) return false;
         return group.displayName.toLowerCase().includes(query);
       });
@@ -569,7 +575,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     // Filter by selected tags
     if (selectedTags.length > 0) {
       result = result.filter((groupName) => {
-        const group = groupedTimelines.find((g) => g.groupName === groupName);
+        const group = groupedTimelineMap.get(groupName);
         if (!group) return false;
         const groupTags = parseTagList(group.tags);
         return selectedTags.some((tag) => groupTags.includes(tag));
@@ -583,8 +589,8 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     }
 
     result = [...result].sort((a, b) => {
-      const groupA = groupedTimelines.find((g) => g.groupName === a);
-      const groupB = groupedTimelines.find((g) => g.groupName === b);
+      const groupA = groupedTimelineMap.get(a);
+      const groupB = groupedTimelineMap.get(b);
       if (!groupA || !groupB) return 0;
 
       // Always put ungrouped at the end
@@ -593,8 +599,8 @@ export function DashboardView({ initialData }: DashboardViewProps) {
 
       if (sortMode === "group") {
         // Sort by tags: compare tag by tag (first tag, then second, etc.)
-        const tagsA = groupA.tags?.split(",").map(t => t.trim().toLowerCase()) || [];
-        const tagsB = groupB.tags?.split(",").map(t => t.trim().toLowerCase()) || [];
+        const tagsA = parseTagList(groupA.tags).map((t) => t.toLowerCase());
+        const tagsB = parseTagList(groupB.tags).map((t) => t.toLowerCase());
         const maxLen = Math.max(tagsA.length, tagsB.length);
 
         for (let i = 0; i < maxLen; i++) {
@@ -612,7 +618,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     });
 
     return result;
-  }, [orderedGroupNames, groupedTimelines, searchQuery, selectedTags, sortMode]);
+  }, [groupedTimelineMap, orderedGroupNames, groupedTimelines, searchQuery, selectedTags, sortMode]);
 
   const groupedPanels = filteredGroupNames.length === 0 ? (
     <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border/50 bg-muted/20 py-20 text-center">
@@ -637,7 +643,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
   ) : (
     <div className="space-y-4">
       {filteredGroupNames.map((groupName) => {
-        const group = groupedTimelines.find((g) => g.groupName === groupName);
+        const group = groupedTimelineMap.get(groupName);
         if (!group) return null;
         const commonProps = {
           group,
