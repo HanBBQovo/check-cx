@@ -109,7 +109,9 @@ export async function getAvailabilityStats(
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("availability_stats")
-    .select("config_id, period, total_checks, operational_count, availability_pct");
+    .select("config_id, period, total_checks, operational_count, availability_pct")
+    .order("config_id", { ascending: true })
+    .order("period", { ascending: true });
 
   if (error) {
     logError("读取可用性统计失败", error);

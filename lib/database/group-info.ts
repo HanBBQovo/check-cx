@@ -49,8 +49,9 @@ export async function loadGroupInfos(options?: {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
-    .from('group_info')
-    .select('*');
+    .from("group_info")
+    .select("*")
+    .order("group_name", { ascending: true });
 
   if (error) {
     console.error("Failed to load group info:", error);
