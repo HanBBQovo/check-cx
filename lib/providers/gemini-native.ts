@@ -54,21 +54,39 @@ function resolveGeminiUrl(endpoint: string, model: string): string {
 function extractGeminiText(payload: unknown): string | null {
   const data = payload as {
     candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> };
+      content?: { parts?: Array<{ text?: unknown }> };
     }>;
   };
 
-  const candidate = data?.candidates?.[0];
-  const parts = candidate?.content?.parts;
-  if (!parts || !Array.isArray(parts)) {
-    return null;
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts;
+    if (!parts || !Array.isArray(parts)) {
+      continue;
+    }
+
+    const texts = parts
+      .map((part) => {
+        const value = part?.text;
+        if (typeof value === "string") {
+          return value;
+        }
+        if (typeof value === "number" || typeof value === "boolean") {
+          return String(value);
+        }
+        return "";
+      })
+      .filter(Boolean);
+
+    if (texts.length > 0) {
+      const combined = texts.join("");
+      if (combined.trim()) {
+        return combined;
+      }
+    }
   }
 
-  const texts = parts
-    .map((part) => (typeof part?.text === "string" ? part.text : ""))
-    .filter(Boolean);
-
-  return texts.length > 0 ? texts.join("") : null;
+  return null;
 }
 
 function mergeStreamText(previous: string | null, next: string): string {
