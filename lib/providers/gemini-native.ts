@@ -71,7 +71,23 @@ function extractGeminiText(payload: unknown): string | null {
   return texts.length > 0 ? texts.join("") : null;
 }
 
-async function readEventStreamJson(response: Response): Promise<unknown> {
+function mergeStreamText(previous: string | null, next: string): string {
+  if (!previous) {
+    return next;
+  }
+  if (next.startsWith(previous)) {
+    return next;
+  }
+  if (previous.startsWith(next)) {
+    return previous;
+  }
+  return previous + next;
+}
+
+async function readEventStreamText(response: Response): Promise<{
+  text: string | null;
+  lastPayload: unknown | null;
+}> {
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error("Gemini 返回为空（无响应体）");
@@ -79,7 +95,29 @@ async function readEventStreamJson(response: Response): Promise<unknown> {
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let lastJson: unknown = null;
+  let lastPayload: unknown | null = null;
+  let text: string | null = null;
+
+  const handleLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) {
+      return;
+    }
+    const payload = trimmed.slice("data:".length).trim();
+    if (!payload || payload === "[DONE]") {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(payload);
+      lastPayload = parsed;
+      const extracted = extractGeminiText(parsed);
+      if (extracted && extracted.trim()) {
+        text = mergeStreamText(text, extracted);
+      }
+    } catch {
+      // 忽略解析失败的行
+    }
+  };
 
   while (true) {
     const { value, done } = await reader.read();
@@ -91,49 +129,16 @@ async function readEventStreamJson(response: Response): Promise<unknown> {
     buffer = lines.pop() ?? "";
 
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) {
-        continue;
-      }
-      const payload = trimmed.slice("data:".length).trim();
-      if (!payload || payload === "[DONE]") {
-        continue;
-      }
-      try {
-        lastJson = JSON.parse(payload);
-      } catch {
-        // 忽略解析失败的行
-      }
+      handleLine(line);
     }
   }
 
   // 处理尾部残留
   for (const line of buffer.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) {
-      continue;
-    }
-    const payload = trimmed.slice("data:".length).trim();
-    if (!payload || payload === "[DONE]") {
-      continue;
-    }
-    try {
-      lastJson = JSON.parse(payload);
-    } catch {
-      // ignore
-    }
+    handleLine(line);
   }
 
-  if (lastJson === null) {
-    const text = await response.text().catch(() => "");
-    throw createGeminiApiError(
-      response.status || 500,
-      text,
-      "Gemini 流式响应未包含可解析的 data: JSON"
-    );
-  }
-
-  return lastJson;
+  return { text, lastPayload };
 }
 
 export async function requestGeminiNative(params: {
@@ -190,11 +195,19 @@ export async function requestGeminiNative(params: {
     }
 
     const contentType = response.headers.get("content-type") ?? "";
-    const payload =
-      contentType.includes("text/event-stream")
-        ? await readEventStreamJson(response)
-        : await response.json();
+    if (contentType.includes("text/event-stream")) {
+      const { text, lastPayload } = await readEventStreamText(response);
+      if (text && text.trim()) {
+        return text;
+      }
+      throw createGeminiApiError(
+        response.status || 500,
+        JSON.stringify(lastPayload).slice(0, 1000),
+        "Gemini 流式响应中未找到 candidates 文本"
+      );
+    }
 
+    const payload = await response.json();
     const text = extractGeminiText(payload);
     if (!text || !text.trim()) {
       throw createGeminiApiError(
@@ -301,4 +314,3 @@ export async function checkWithGeminiNative(
     return toResult("error", null, getErrorMessage(error));
   }
 }
-
