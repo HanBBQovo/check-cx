@@ -17,10 +17,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LINUX DO - 模型中转状态检测",
+  title: "HanBBQ - 模型中转状态检测",
   description: "实时检测 OpenAI / Gemini / Anthropic 对话接口的可用性与延迟",
   icons: {
-    icon: "/favicon.png",
+    icon: "/favicon.ico",
   },
 };
 
