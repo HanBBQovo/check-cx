@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+Snipaste_*.png
 
 # debug
 npm-debug.log*

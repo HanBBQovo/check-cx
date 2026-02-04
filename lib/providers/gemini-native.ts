@@ -17,6 +17,8 @@ const DEFAULT_TIMEOUT_MS = 45_000;
 /** 性能降级阈值（毫秒） */
 const DEGRADED_THRESHOLD_MS = 6_000;
 
+type GeminiAction = "streamGenerateContent" | "generateContent";
+
 interface GeminiApiError extends Error {
   statusCode?: number;
   responseBody?: string;
@@ -33,19 +35,31 @@ function createGeminiApiError(
   return error;
 }
 
-function resolveGeminiUrl(endpoint: string, model: string): string {
+function resolveGeminiUrlForAction(
+  endpoint: string,
+  model: string,
+  action: GeminiAction
+): string {
   const trimmed = endpoint.trim();
-
-  if (trimmed.includes(":streamGenerateContent")) {
-    return trimmed;
-  }
-
   const [base, query = ""] = trimmed.split("?");
   const normalizedBase = base.replace(/\/+$/, "");
+  const withQuery = (nextBase: string) => (query ? `${nextBase}?${query}` : nextBase);
+
+  if (action === "streamGenerateContent") {
+    if (trimmed.includes(":streamGenerateContent")) {
+      return trimmed;
+    }
+  } else {
+    if (trimmed.includes(":generateContent")) {
+      return trimmed;
+    }
+    if (trimmed.includes(":streamGenerateContent")) {
+      return withQuery(base.replace(":streamGenerateContent", ":generateContent"));
+    }
+  }
 
   if (normalizedBase.endsWith("/v1beta/models")) {
-    const nextBase = `${normalizedBase}/${model}:streamGenerateContent`;
-    return query ? `${nextBase}?${query}` : nextBase;
+    return withQuery(`${normalizedBase}/${model}:${action}`);
   }
 
   return trimmed;
@@ -221,6 +235,7 @@ export async function requestGeminiNative(params: {
   model: string;
   prompt: string;
   timeoutMs?: number;
+  action?: GeminiAction;
   requestHeaders?: Record<string, string> | null;
 }): Promise<string> {
   const controller = new AbortController();
@@ -229,7 +244,8 @@ export async function requestGeminiNative(params: {
     params.timeoutMs ?? DEFAULT_TIMEOUT_MS
   );
 
-  const url = resolveGeminiUrl(params.endpoint, params.model);
+  const action = params.action ?? "streamGenerateContent";
+  const url = resolveGeminiUrlForAction(params.endpoint, params.model, action);
   const headers = new Headers({
     Authorization: `Bearer ${params.apiKey}`,
     "Content-Type": "application/json",
@@ -241,6 +257,10 @@ export async function requestGeminiNative(params: {
   // 确保鉴权与内容类型不被覆盖
   headers.set("Authorization", `Bearer ${params.apiKey}`);
   headers.set("Content-Type", "application/json");
+  headers.set(
+    "Accept",
+    action === "streamGenerateContent" ? "text/event-stream" : "application/json"
+  );
 
   const body = {
     contents: [
@@ -254,13 +274,15 @@ export async function requestGeminiNative(params: {
       maxOutputTokens: 32,
     },
   };
+  const requestBody = JSON.stringify(body);
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: requestBody,
       signal: controller.signal,
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -362,14 +384,30 @@ export async function checkWithGeminiNative(
   const challenge = generateChallenge();
 
   try {
-    const responseText = await requestGeminiNative({
+    let responseText = await requestGeminiNative({
       endpoint: displayEndpoint,
       apiKey: config.apiKey,
       model: config.model,
       prompt: challenge.prompt,
       timeoutMs: DEFAULT_TIMEOUT_MS,
+      action: "streamGenerateContent",
       requestHeaders: config.requestHeaders ?? undefined,
     });
+
+    if (!responseText.trim()) {
+      console.warn(
+        `[gemini] ${config.name} streamGenerateContent 返回空，尝试 generateContent 重试`
+      );
+      responseText = await requestGeminiNative({
+        endpoint: displayEndpoint,
+        apiKey: config.apiKey,
+        model: config.model,
+        prompt: challenge.prompt,
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        action: "generateContent",
+        requestHeaders: config.requestHeaders ?? undefined,
+      });
+    }
 
     const latencyMs = Date.now() - startedAt;
     const pingLatencyMs = await pingPromise;
