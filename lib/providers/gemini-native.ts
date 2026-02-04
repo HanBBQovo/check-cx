@@ -259,7 +259,9 @@ export async function requestGeminiNative(params: {
   headers.set("Content-Type", "application/json");
   headers.set(
     "Accept",
-    action === "streamGenerateContent" ? "text/event-stream" : "application/json"
+    action === "streamGenerateContent"
+      ? "application/json, text/event-stream"
+      : "application/json"
   );
 
   const body = {
