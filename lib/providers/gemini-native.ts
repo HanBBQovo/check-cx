@@ -116,24 +116,64 @@ async function readEventStreamText(response: Response): Promise<{
   let lastPayload: unknown | null = null;
   let text: string | null = null;
 
-  const handleLine = (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) {
-      return;
-    }
-    const payload = trimmed.slice("data:".length).trim();
-    if (!payload || payload === "[DONE]") {
+  let eventDataLines: string[] = [];
+
+  const handlePayload = (payload: string) => {
+    const trimmed = payload.trim();
+    if (!trimmed || trimmed === "[DONE]") {
       return;
     }
     try {
-      const parsed = JSON.parse(payload);
+      const parsed = JSON.parse(trimmed) as unknown;
+      // 某些网关会发送 `null` 作为 keep-alive，占位符，跳过即可
+      if (parsed === null) {
+        return;
+      }
       lastPayload = parsed;
       const extracted = extractGeminiText(parsed);
       if (extracted && extracted.trim()) {
         text = mergeStreamText(text, extracted);
       }
     } catch {
-      // 忽略解析失败的行
+      // 忽略解析失败的 payload
+    }
+  };
+
+  const flushEvent = () => {
+    if (eventDataLines.length === 0) {
+      return;
+    }
+    handlePayload(eventDataLines.join("\n"));
+    eventDataLines = [];
+  };
+
+  const handleLine = (rawLine: string) => {
+    const line = rawLine.replace(/\r$/, "");
+    const trimmed = line.trim();
+    if (trimmed === "") {
+      flushEvent();
+      return;
+    }
+
+    if (trimmed.startsWith("data:")) {
+      eventDataLines.push(trimmed.slice("data:".length).trim());
+      return;
+    }
+
+    // SSE 控制字段/注释
+    if (
+      trimmed.startsWith("event:") ||
+      trimmed.startsWith("id:") ||
+      trimmed.startsWith("retry:") ||
+      trimmed.startsWith(":")
+    ) {
+      return;
+    }
+
+    // 兼容部分网关：虽然标记为 text/event-stream，但直接输出 NDJSON / JSON 行
+    if (trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed === "null") {
+      flushEvent();
+      handlePayload(trimmed);
     }
   };
 
@@ -155,6 +195,7 @@ async function readEventStreamText(response: Response): Promise<{
   for (const line of buffer.split(/\r?\n/)) {
     handleLine(line);
   }
+  flushEvent();
 
   return { text, lastPayload };
 }
@@ -218,24 +259,45 @@ export async function requestGeminiNative(params: {
       if (text && text.trim()) {
         return text;
       }
-      throw createGeminiApiError(
-        response.status || 500,
-        JSON.stringify(lastPayload).slice(0, 1000),
-        "Gemini 流式响应中未找到 candidates 文本"
-      );
+      // 200 但无有效输出：按“空回复”处理（避免 UI 显示为 error/[200] null）
+      void lastPayload;
+      return "";
     }
 
-    const payload = await response.json();
+    const rawText = await response.text().catch(() => "");
+    const trimmed = rawText.trim();
+    if (!trimmed || trimmed === "null") {
+      return "";
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawText) as unknown;
+    } catch {
+      // 兼容 NDJSON / SSE-like 逐行 JSON（取最后一个可解析的 JSON）
+      let last: unknown | null = null;
+      for (const line of rawText.split(/\r?\n/)) {
+        const current = line.trim();
+        if (!current || current === "[DONE]") {
+          continue;
+        }
+        const maybePayload = current.startsWith("data:")
+          ? current.slice("data:".length).trim()
+          : current;
+        if (!maybePayload || maybePayload === "[DONE]" || maybePayload === "null") {
+          continue;
+        }
+        try {
+          last = JSON.parse(maybePayload) as unknown;
+        } catch {
+          // 忽略解析失败的行
+        }
+      }
+      payload = last;
+    }
+
     const text = extractGeminiText(payload);
-    if (!text || !text.trim()) {
-      throw createGeminiApiError(
-        response.status || 500,
-        JSON.stringify(payload).slice(0, 1000),
-        "Gemini 响应中未找到 candidates 文本"
-      );
-    }
-
-    return text;
+    return text?.trim() ? text : "";
   } finally {
     clearTimeout(timeout);
   }
@@ -327,8 +389,9 @@ export async function checkWithGeminiNative(
 
     return toResult(status, latencyMs, message);
   } catch (error) {
+    const latencyMs = Date.now() - startedAt;
     const pingLatencyMs = await pingPromise;
     const toResult = buildCheckResult({ config, endpoint: displayEndpoint, pingLatencyMs });
-    return toResult("error", null, getErrorMessage(error));
+    return toResult("error", latencyMs, getErrorMessage(error));
   }
 }
