@@ -25,6 +25,7 @@
 - `CHECK_CONCURRENCY`：并发数（1–20）
 - `OFFICIAL_STATUS_CHECK_INTERVAL_SECONDS`：官方状态轮询间隔（60–3600 秒）
 - `HISTORY_RETENTION_DAYS`：历史保留天数（7–365）
+- `CHECK_CX_SITE_TITLE`：网页标题（浏览器标签页 Title）
 
 ## 3. 数据库初始化
 
@@ -134,4 +135,3 @@ SELECT prune_check_history(30);
 
 - 确认每个节点 `CHECK_NODE_ID` 唯一。
 - 检查 `check_poller_leases` 是否可写（需 service role key）。
-

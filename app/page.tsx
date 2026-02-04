@@ -4,6 +4,9 @@ import packageJson from "@/package.json";
 
 const ESTIMATED_VERSION = `v${packageJson.version}`;
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default function Home() {
   return (
     <div className="py-8 md:py-16">

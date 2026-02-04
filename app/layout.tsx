@@ -16,13 +16,20 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "HanBBQ - 模型中转状态检测",
-  description: "实时检测 OpenAI / Gemini / Anthropic 对话接口的可用性与延迟",
-  icons: {
-    icon: "/favicon.ico",
-  },
-};
+export function generateMetadata(): Metadata {
+  const siteTitle = process.env.CHECK_CX_SITE_TITLE?.trim() || "Check CX - 模型中转状态检测";
+
+  return {
+    title: {
+      default: siteTitle,
+      template: `%s | ${siteTitle}`,
+    },
+    description: "实时检测 OpenAI / Gemini / Anthropic 对话接口的可用性与延迟",
+    icons: {
+      icon: "/favicon.ico",
+    },
+  };
+}
 
 const themeBootScript = `(()=>{
   const hour = new Date().getHours();

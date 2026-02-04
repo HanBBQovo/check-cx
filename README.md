@@ -46,6 +46,7 @@ CHECK_POLL_INTERVAL_SECONDS=60
 HISTORY_RETENTION_DAYS=30
 OFFICIAL_STATUS_CHECK_INTERVAL_SECONDS=300
 CHECK_CONCURRENCY=5
+CHECK_CX_SITE_TITLE=Check CX - 模型中转状态检测
 ```
 
 ### 4. 初始化数据库
@@ -98,6 +99,7 @@ pnpm lint   # 代码检查
 | `CHECK_CONCURRENCY`                      | 否  | `5`     | 最大并发（1–20）                  |
 | `OFFICIAL_STATUS_CHECK_INTERVAL_SECONDS` | 否  | `300`   | 官方状态轮询间隔（60–3600 秒）         |
 | `HISTORY_RETENTION_DAYS`                 | 否  | `30`    | 历史保留天数（7–365）               |
+| `CHECK_CX_SITE_TITLE`                    | 否  | -       | 网页标题（浏览器标签页 Title）         |
 
 ### Provider 配置要点
 
