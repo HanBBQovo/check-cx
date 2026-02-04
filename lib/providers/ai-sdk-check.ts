@@ -35,8 +35,8 @@ import { measureEndpointPing } from "./endpoint-ping";
 /** 默认超时时间（毫秒）- 45 秒，兼顾慢速模型的首次响应 */
 const DEFAULT_TIMEOUT_MS = 45_000;
 
-/** 性能降级阈值（毫秒）- 超过此值标记为 degraded 状态 */
-const DEGRADED_THRESHOLD_MS = 6_000;
+/** 性能降级阈值（毫秒）- 超过此值标记为 degraded 状态，可通过 DEGRADED_THRESHOLD_MS 环境变量覆写 */
+const DEGRADED_THRESHOLD_MS = Number(process.env.DEGRADED_THRESHOLD_MS) || 6_000;
 
 /** 需要从 metadata 中排除的字段，这些字段会与 streamText 内部参数冲突 */
 const EXCLUDED_METADATA_KEYS = new Set(["model", "prompt", "messages", "abortSignal"]);

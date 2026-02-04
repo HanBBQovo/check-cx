@@ -14,8 +14,8 @@ import { measureEndpointPing } from "./endpoint-ping";
 /** 默认超时时间（毫秒） */
 const DEFAULT_TIMEOUT_MS = 45_000;
 
-/** 性能降级阈值（毫秒） */
-const DEGRADED_THRESHOLD_MS = 6_000;
+/** 性能降级阈值（毫秒），可通过 DEGRADED_THRESHOLD_MS 环境变量覆写 */
+const DEGRADED_THRESHOLD_MS = Number(process.env.DEGRADED_THRESHOLD_MS) || 6_000;
 
 type GeminiAction = "streamGenerateContent" | "generateContent";
 
