@@ -6,6 +6,7 @@
 import type {OfficialStatusResult, ProviderType} from "../types";
 import {checkOpenAIStatus} from "./openai";
 import {checkAnthropicStatus} from "./anthropic";
+import {checkGeminiStatus} from "./gemini";
 
 /**
  * 检查指定 Provider 的官方服务状态
@@ -22,12 +23,7 @@ export async function checkOfficialStatus(
       return checkOpenAIStatus();
 
     case "gemini":
-      // TODO: 实现 Gemini 官方状态检查
-      return {
-        status: "unknown",
-        message: "未配置官方状态检查",
-        checkedAt,
-      };
+      return checkGeminiStatus();
 
     case "anthropic":
       return checkAnthropicStatus();
