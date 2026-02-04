@@ -52,6 +52,21 @@ function resolveGeminiUrl(endpoint: string, model: string): string {
 }
 
 function extractGeminiText(payload: unknown): string | null {
+  if (payload === null || payload === undefined) {
+    return null;
+  }
+
+  // 某些实现（或网关）可能返回 JSON 数组（如 streamGenerateContent 的非 SSE 形态）
+  if (Array.isArray(payload)) {
+    for (let i = payload.length - 1; i >= 0; i -= 1) {
+      const extracted = extractGeminiText(payload[i]);
+      if (extracted && extracted.trim()) {
+        return extracted;
+      }
+    }
+    return null;
+  }
+
   const data = payload as {
     candidates?: Array<{
       content?: { parts?: Array<{ text?: unknown }> };
