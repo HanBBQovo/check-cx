@@ -131,6 +131,82 @@ function mergeStreamText(previous: string | null, next: string): string {
   return previous + next;
 }
 
+function parseEventStreamLikeText(rawText: string): {
+  text: string | null;
+  lastPayload: unknown | null;
+} {
+  let lastPayload: unknown | null = null;
+  let text: string | null = null;
+
+  let eventDataLines: string[] = [];
+
+  const handlePayload = (payload: string) => {
+    const trimmed = payload.trim();
+    if (!trimmed || trimmed === "[DONE]") {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      // 某些网关会发送 `null` 作为 keep-alive，占位符，跳过即可
+      if (parsed === null) {
+        return;
+      }
+      lastPayload = parsed;
+      const extracted = extractGeminiText(parsed);
+      if (extracted && extracted.trim()) {
+        text = mergeStreamText(text, extracted);
+      }
+    } catch {
+      // 忽略解析失败的 payload
+    }
+  };
+
+  const flushEvent = () => {
+    if (eventDataLines.length === 0) {
+      return;
+    }
+    handlePayload(eventDataLines.join("\n"));
+    eventDataLines = [];
+  };
+
+  const handleLine = (rawLine: string) => {
+    const line = rawLine.replace(/\r$/, "");
+    const trimmed = line.trim();
+    if (trimmed === "") {
+      flushEvent();
+      return;
+    }
+
+    if (trimmed.startsWith("data:")) {
+      eventDataLines.push(trimmed.slice("data:".length).trim());
+      return;
+    }
+
+    // SSE 控制字段/注释
+    if (
+      trimmed.startsWith("event:") ||
+      trimmed.startsWith("id:") ||
+      trimmed.startsWith("retry:") ||
+      trimmed.startsWith(":")
+    ) {
+      return;
+    }
+
+    // 兼容部分网关：content-type 不是 text/event-stream，但 body 仍是 NDJSON / SSE-like 行
+    if (trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed === "null") {
+      flushEvent();
+      handlePayload(trimmed);
+    }
+  };
+
+  for (const line of rawText.split(/\r?\n/)) {
+    handleLine(line);
+  }
+  flushEvent();
+
+  return { text, lastPayload };
+}
+
 async function readEventStreamText(response: Response): Promise<{
   text: string | null;
   lastPayload: unknown | null;
@@ -313,26 +389,11 @@ export async function requestGeminiNative(params: {
     try {
       payload = JSON.parse(rawText) as unknown;
     } catch {
-      // 兼容 NDJSON / SSE-like 逐行 JSON（取最后一个可解析的 JSON）
-      let last: unknown | null = null;
-      for (const line of rawText.split(/\r?\n/)) {
-        const current = line.trim();
-        if (!current || current === "[DONE]") {
-          continue;
-        }
-        const maybePayload = current.startsWith("data:")
-          ? current.slice("data:".length).trim()
-          : current;
-        if (!maybePayload || maybePayload === "[DONE]" || maybePayload === "null") {
-          continue;
-        }
-        try {
-          last = JSON.parse(maybePayload) as unknown;
-        } catch {
-          // 忽略解析失败的行
-        }
+      const { text, lastPayload } = parseEventStreamLikeText(rawText);
+      if (text && text.trim()) {
+        return text;
       }
-      payload = last;
+      payload = lastPayload;
     }
 
     const text = extractGeminiText(payload);
