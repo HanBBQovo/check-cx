@@ -49,6 +49,9 @@ function resolveGeminiUrlForAction(
     if (trimmed.includes(":streamGenerateContent")) {
       return trimmed;
     }
+    if (trimmed.includes(":generateContent")) {
+      return withQuery(base.replace(":generateContent", ":streamGenerateContent"));
+    }
   } else {
     if (trimmed.includes(":generateContent")) {
       return trimmed;
@@ -456,6 +459,11 @@ export async function checkWithGeminiNative(
       ? "streamGenerateContent"
       : "generateContent";
 
+    const secondAction: GeminiAction =
+      firstAction === "streamGenerateContent"
+        ? "generateContent"
+        : "streamGenerateContent";
+
     let responseText = await requestGeminiNative({
       endpoint: displayEndpoint,
       apiKey: config.apiKey,
@@ -466,17 +474,23 @@ export async function checkWithGeminiNative(
       requestHeaders: config.requestHeaders ?? undefined,
     });
 
-    if (!responseText.trim() && firstAction === "streamGenerateContent") {
-      console.warn(
-        `[gemini] ${config.name} streamGenerateContent 返回空，尝试 generateContent 重试`
-      );
+    if (!responseText.trim()) {
+      const label =
+        firstAction === "streamGenerateContent"
+          ? "streamGenerateContent"
+          : "generateContent";
+      const retryLabel =
+        secondAction === "streamGenerateContent"
+          ? "streamGenerateContent"
+          : "generateContent";
+      console.warn(`[gemini] ${config.name} ${label} 返回空，尝试 ${retryLabel} 重试`);
       responseText = await requestGeminiNative({
         endpoint: displayEndpoint,
         apiKey: config.apiKey,
         model: config.model,
         prompt: challenge.prompt,
         timeoutMs: DEFAULT_TIMEOUT_MS,
-        action: "generateContent",
+        action: secondAction,
         requestHeaders: config.requestHeaders ?? undefined,
       });
     }
