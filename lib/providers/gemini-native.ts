@@ -336,7 +336,7 @@ export async function requestGeminiNative(params: {
   headers.set(
     "Accept",
     action === "streamGenerateContent"
-      ? "application/json, text/event-stream"
+      ? "text/event-stream, application/json"
       : "application/json"
   );
 
@@ -447,17 +447,26 @@ export async function checkWithGeminiNative(
   const challenge = generateChallenge();
 
   try {
+    const normalizedBase = displayEndpoint.trim().split("?")[0]?.replace(/\/+$/, "") ?? "";
+    const preferStream =
+      displayEndpoint.includes(":streamGenerateContent") ||
+      normalizedBase.endsWith("/v1beta/models");
+
+    const firstAction: GeminiAction = preferStream
+      ? "streamGenerateContent"
+      : "generateContent";
+
     let responseText = await requestGeminiNative({
       endpoint: displayEndpoint,
       apiKey: config.apiKey,
       model: config.model,
       prompt: challenge.prompt,
       timeoutMs: DEFAULT_TIMEOUT_MS,
-      action: "streamGenerateContent",
+      action: firstAction,
       requestHeaders: config.requestHeaders ?? undefined,
     });
 
-    if (!responseText.trim()) {
+    if (!responseText.trim() && firstAction === "streamGenerateContent") {
       console.warn(
         `[gemini] ${config.name} streamGenerateContent 返回空，尝试 generateContent 重试`
       );
