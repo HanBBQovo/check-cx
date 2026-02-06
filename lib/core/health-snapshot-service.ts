@@ -40,12 +40,6 @@ export async function loadSnapshotForScope(
   const now = Date.now();
 
   if (refreshMode === "never") {
-    if (
-      cacheEntry.history &&
-      now - cacheEntry.lastPingAt < scope.pollIntervalMs
-    ) {
-      return cacheEntry.history;
-    }
     const snapshot = await readHistoryForScope(scope);
     cacheEntry.history = snapshot;
     cacheEntry.lastPingAt = now;

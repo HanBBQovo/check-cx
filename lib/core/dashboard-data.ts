@@ -132,7 +132,7 @@ async function loadDashboardDataInternal(options?: {
   );
   const cacheTtlMs = getDashboardCacheTtlMs(pollIntervalMs);
   const now = Date.now();
-  const shouldBypassCache = refreshMode === "always";
+  const shouldBypassCache = refreshMode !== "missing";
 
   const loadData = async (): Promise<DashboardLoadResult> => {
     const history = await loadSnapshotForScope(

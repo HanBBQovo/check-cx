@@ -133,7 +133,7 @@ export async function loadGroupDashboardData(
   );
   const cacheTtlMs = getGroupCacheTtlMs(pollIntervalMs);
   const now = Date.now();
-  const shouldBypassCache = refreshMode === "always";
+  const shouldBypassCache = refreshMode !== "missing";
 
   const loadData = async (): Promise<GroupDashboardData | null> => {
     const history = await loadSnapshotForScope(
