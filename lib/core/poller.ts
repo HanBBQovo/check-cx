@@ -7,9 +7,17 @@ import {historySnapshotStore} from "../database/history";
 import {loadProviderConfigsFromDB} from "../database/config-loader";
 import {runProviderChecks} from "../providers";
 import {getPollingIntervalMs} from "./polling-config";
-import {getLastPingStartedAt, getPollerTimer, setLastPingStartedAt, setPollerTimer,} from "./global-state";
+import {
+  clearPingCache,
+  getLastPingStartedAt,
+  getPollerTimer,
+  setLastPingStartedAt,
+  setPollerTimer,
+} from "./global-state";
 import {startOfficialStatusPoller} from "./official-status-poller";
 import {ensurePollerLeadership, isPollerLeader} from "./poller-leadership";
+import {clearDashboardDataCache} from "./dashboard-data";
+import {clearGroupDashboardCache} from "./group-data";
 import type {HealthStatus} from "../types";
 
 const POLL_INTERVAL_MS = getPollingIntervalMs();
@@ -85,6 +93,9 @@ async function tick() {
 
     console.log(`[check-cx] 正在写入历史记录（${results.length} 条）…`);
     await historySnapshotStore.append(results);
+    clearPingCache();
+    clearDashboardDataCache();
+    clearGroupDashboardCache();
     const providerCount = new Set(results.map((item) => item.id)).size;
     console.log(
       `[check-cx] 历史记录更新完成：providers=${providerCount}，本轮新增=${results.length}`

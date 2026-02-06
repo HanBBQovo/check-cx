@@ -150,14 +150,29 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
   }, [isCoarsePointer]);
 
   useEffect(() => {
-    if (!data.pollIntervalMs || data.pollIntervalMs <= 0) {
+    if (!data.pollIntervalMs || data.pollIntervalMs <= 0 || latestCheckTimestamp === null) {
       return;
     }
-    const timer = window.setInterval(() => {
+
+    let intervalTimer: number | null = null;
+    const remaining = computeRemainingMs(data.pollIntervalMs, latestCheckTimestamp);
+    const initialDelay = remaining ?? data.pollIntervalMs;
+
+    const startPolling = () => {
       refresh(undefined, false, true).catch(() => undefined);
-    }, data.pollIntervalMs);
-    return () => window.clearInterval(timer);
-  }, [data.pollIntervalMs, refresh]);
+      intervalTimer = window.setInterval(() => {
+        refresh(undefined, false, true).catch(() => undefined);
+      }, data.pollIntervalMs);
+    };
+
+    const timeoutTimer = window.setTimeout(startPolling, initialDelay);
+    return () => {
+      window.clearTimeout(timeoutTimer);
+      if (intervalTimer !== null) {
+        window.clearInterval(intervalTimer);
+      }
+    };
+  }, [data.pollIntervalMs, latestCheckTimestamp, refresh]);
 
   useEffect(() => {
     if (selectedPeriod === data.trendPeriod) {
