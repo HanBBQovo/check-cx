@@ -1,6 +1,6 @@
 {
   "name": "check-cx",
-  "version": "1.20.10",
+  "version": "1.20.11",
   "private": true,
   "scripts": {
     "dev": "next dev",
