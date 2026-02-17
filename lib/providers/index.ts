@@ -6,7 +6,6 @@ import pLimit from "p-limit";
 import type { CheckResult, ProviderConfig } from "../types";
 import { getErrorMessage, logError } from "../utils";
 import { checkWithAiSdk } from "./ai-sdk-check";
-import { checkWithGeminiNative } from "./gemini-native";
 import { getCheckConcurrency } from "../core/polling-config";
 
 // 最多尝试 3 次：初始一次 + 2 次重试
@@ -23,10 +22,7 @@ function shouldRetryRequestAborted(message: string | undefined): boolean {
 async function checkWithRetry(config: ProviderConfig): Promise<CheckResult> {
   for (let attempt = 0; attempt <= MAX_REQUEST_ABORT_RETRIES; attempt += 1) {
     try {
-      const result =
-        config.type === "gemini"
-          ? await checkWithGeminiNative(config)
-          : await checkWithAiSdk(config);
+      const result = await checkWithAiSdk(config);
       if (
         result.status === "failed" &&
         shouldRetryRequestAborted(result.message) &&
