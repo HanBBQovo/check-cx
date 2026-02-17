@@ -18,10 +18,11 @@
  * - 端点 Ping 延迟测量
  */
 
-import { streamText } from "ai";
+import { streamText, generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
 import type { CheckResult, HealthStatus, ProviderConfig } from "../types";
 import { DEFAULT_ENDPOINTS } from "../types";
@@ -43,6 +44,33 @@ const EXCLUDED_METADATA_KEYS = new Set(["model", "prompt", "messages", "abortSig
 
 /** 用于从完整端点 URL 中提取 baseURL 的正则表达式 */
 const API_PATH_SUFFIX_REGEX = /\/(chat\/completions|responses|messages)\/?$/;
+
+/** 原生 Gemini 端点识别正则：包含 /models/ 且以 :generateContent 或 :streamGenerateContent 结尾 */
+const GOOGLE_GENERATIVE_API_REGEX = /\/v\d+\w*\/models\/[^/:]+:(generateContent|streamGenerateContent)\/?$/;
+
+/**
+ * 判断端点是否为原生 Gemini API
+ *
+ * 原生 Gemini API 格式：
+ * - https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent
+ * - https://generativelanguage.googleapis.com/v1/models/gemini-pro:streamGenerateContent
+ */
+function isGoogleGenerativeEndpoint(endpoint: string | null | undefined): boolean {
+  if (!endpoint) return false;
+  return GOOGLE_GENERATIVE_API_REGEX.test(endpoint);
+}
+
+/**
+ * 从原生 Gemini 端点中提取 baseURL
+ *
+ * @example
+ * extractGoogleBaseURL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+ * // => "https://generativelanguage.googleapis.com/v1beta"
+ */
+function extractGoogleBaseURL(endpoint: string): string {
+  const match = endpoint.match(/^(https:\/\/generativelanguage.googleapis\.com\/v\d+\w*)/);
+  return match?.[1] || endpoint;
+}
 
 /* ============================================================================
  * URL 处理工具函数
@@ -269,14 +297,31 @@ function createModel(config: ProviderConfig) {
     }
 
     case "gemini": {
-      const provider = createOpenAICompatible({
-        name: "gemini",
-        apiKey: config.apiKey,
-        baseURL,
-        fetch: customFetch,
-      });
-      // Gemini 不支持 reasoning_effort
-      return { model: provider(modelId), reasoningEffort: undefined, isResponses: false };
+      // 自动检测：原生 Gemini API vs OpenAI 兼容格式
+      if (isGoogleGenerativeEndpoint(endpoint)) {
+        // 原生 Gemini API：使用 @ai-sdk/google
+        const googleBaseURL = extractGoogleBaseURL(endpoint);
+        const provider = createGoogleGenerativeAI({
+          apiKey: config.apiKey,
+          baseURL: googleBaseURL,
+          fetch: customFetch,
+        });
+        return {
+          model: provider(modelId),
+          reasoningEffort: undefined,
+          isResponses: false,
+          isGoogleGenerative: true, // 标记为原生 Gemini
+        };
+      } else {
+        // OpenAI 兼容格式：使用 createOpenAICompatible
+        const provider = createOpenAICompatible({
+          name: "gemini",
+          apiKey: config.apiKey,
+          baseURL,
+          fetch: customFetch,
+        });
+        return { model: provider(modelId), reasoningEffort: undefined, isResponses: false };
+      }
     }
 
     default:
