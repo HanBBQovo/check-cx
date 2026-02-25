@@ -76,6 +76,18 @@ function extractGoogleBaseURL(endpoint: string): string {
   return endpoint.replace(/\/models\/[^/:]+:(generateContent|streamGenerateContent)\/?$/, "");
 }
 
+/**
+ * 从原生 Gemini 端点中提取模型名
+ *
+ * @example
+ * extractGoogleModel("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
+ * // => "gemini-2.0-flash"
+ */
+function extractGoogleModel(endpoint: string): string | null {
+  const match = endpoint.match(/\/models\/([^/:]+):(generateContent|streamGenerateContent)\/?$/);
+  return match?.[1] || null;
+}
+
 /* ============================================================================
  * URL 处理工具函数
  * ============================================================================ */
@@ -311,7 +323,7 @@ function createModel(config: ProviderConfig) {
           fetch: customFetch,
         });
         return {
-          model: provider(modelId),
+          model: provider(extractGoogleModel(endpoint) || modelId),
           reasoningEffort: undefined,
           isResponses: false,
           isGoogleGenerative: true, // 标记为原生 Gemini
