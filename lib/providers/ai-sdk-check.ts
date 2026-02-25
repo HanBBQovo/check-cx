@@ -63,13 +63,17 @@ function isGoogleGenerativeEndpoint(endpoint: string | null | undefined): boolea
 /**
  * 从原生 Gemini 端点中提取 baseURL
  *
+ * 剥离 /models/<model>:(generateContent|streamGenerateContent) 后缀，
+ * 支持任意域名（官方 API 和自建代理均可）
+ *
  * @example
  * extractGoogleBaseURL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent")
  * // => "https://generativelanguage.googleapis.com/v1beta"
+ * extractGoogleBaseURL("https://my-proxy.com/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent")
+ * // => "https://my-proxy.com/v1beta"
  */
 function extractGoogleBaseURL(endpoint: string): string {
-  const match = endpoint.match(/^(https:\/\/generativelanguage.googleapis\.com\/v\d+\w*)/);
-  return match?.[1] || endpoint;
+  return endpoint.replace(/\/models\/[^/:]+:(generateContent|streamGenerateContent)\/?$/, "");
 }
 
 /* ============================================================================
